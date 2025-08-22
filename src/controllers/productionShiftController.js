@@ -4,7 +4,6 @@ export const createShiftReport = async (req, res) => {
   try {
     const { date, shift, shiftNumber, cebCovers, lecoCovers, base, shutters } = req.body;
 
-    // Validate required fields
     if (!date || !shift || !shiftNumber) {
       return res.status(400).json({ message: "Date, shift, and shift number are required" });
     }
@@ -13,7 +12,6 @@ export const createShiftReport = async (req, res) => {
       return res.status(400).json({ message: "Data for all product types is required" });
     }
 
-    // Validate product data
     const products = { cebCovers, lecoCovers, base, shutters };
     for (const [section, data] of Object.entries(products)) {
       const fields = [
@@ -87,4 +85,36 @@ export const getCurrentStock = async (req, res) => {
     console.error("Error fetching current stock:", error);
     res.status(500).json({ message: `Internal Server Error: ${error.message}` });
   }
+};
+
+export const getAverageDailyRawMaterialUsage = async (req, res) => {
+  try {
+    const upToDate = req.query.upToDate || new Date().toISOString().split('T')[0];
+    console.log(`Received request for averages up to: ${upToDate}`);
+    const data = await ProductionShiftModel.getAverageDailyRawMaterialUsage(upToDate);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error fetching average daily raw material usage:", error);
+    res.status(500).json({ message: `Internal Server Error: ${error.message}` });
+  }
+};
+
+export const getAverageDailyAssemblyReceived = async (req, res) => {
+  try {
+    const upToDate = req.query.upToDate || new Date().toISOString().split('T')[0];
+    console.log(`Received request for assembly received averages up to: ${upToDate}`);
+    const data = await ProductionShiftModel.getAverageDailyAssemblyReceived(upToDate);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error fetching average daily assembly received items:", error);
+    res.status(500).json({ message: `Internal Server Error: ${error.message}` });
+  }
+};
+
+export default {
+  createShiftReport,
+  getAllShiftReports,
+  getCurrentStock,
+  getAverageDailyRawMaterialUsage,
+  getAverageDailyAssemblyReceived
 };
