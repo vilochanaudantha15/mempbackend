@@ -29,7 +29,7 @@ app.use("/api/defectivecrushed", defectiveCrushedRoutes);
 app.use("/api/delivery-notes", deliveryNoteRoutes);
 app.use("/api/shift-dispatch", shiftDispatchRoutes); 
 
-app.listen(3000, async () => {
+app.listen(6020, async () => {
   console.log("Server running on port 3000");
   try {
     await checkConnection();
