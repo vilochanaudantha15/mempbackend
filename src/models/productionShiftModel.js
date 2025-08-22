@@ -88,7 +88,6 @@ const createShiftReport = async (reportData) => {
   try {
     await pool.query("START TRANSACTION");
 
-    // Check available stock for raw materials
     const rawMaterialChecks = [
       { id: stockItemIds.rawMaterialPC, amount: totalRawMaterialPC, name: "PC" },
       { id: stockItemIds.rawMaterialCrushedPC, amount: totalRawMaterialCrushedPC, name: "Crushed PC" },
@@ -108,12 +107,10 @@ const createShiftReport = async (reportData) => {
       }
     }
 
-    // Insert shift report records
     for (const value of values) {
       await pool.execute(query, value);
     }
 
-    // Update stock for good products
     for (const [section, data] of Object.entries(reportData.products)) {
       const goodQty = parseInt(data.goodProductsQty) || 0;
       if (goodQty > 0) {
@@ -124,7 +121,6 @@ const createShiftReport = async (reportData) => {
       }
     }
 
-    // Update defective quantity and weight
     if (totalDefectiveQty > 0) {
       await pool.execute(updateStockQuery, [totalDefectiveQty, stockItemIds.defectiveQty]);
     }
@@ -132,7 +128,6 @@ const createShiftReport = async (reportData) => {
       await pool.execute(updateStockQuery, [totalDefectiveWeight, stockItemIds.defectiveWeight]);
     }
 
-    // Deduct raw materials
     if (totalRawMaterialPC > 0) {
       await pool.execute(updateRawMaterialQuery, [totalRawMaterialPC, stockItemIds.rawMaterialPC]);
     }
@@ -262,4 +257,160 @@ const getCurrentStock = async () => {
   }
 };
 
-export default { createShiftReport, getAllShiftReports, getCurrentStock };
+const getAverageDailyRawMaterialUsage = async (upToDate = new Date().toISOString().split('T')[0]) => {
+  const query = `
+    SELECT 
+      report_date,
+      SUM(COALESCE(raw_material_pc, 0)) as total_pc,
+      SUM(COALESCE(raw_material_crushed_pc, 0)) as total_crushed_pc,
+      SUM(COALESCE(raw_material_mb, 0)) as total_mb
+    FROM production_shift_reports
+    WHERE report_date <= ?
+    GROUP BY report_date
+    ORDER BY report_date ASC
+  `;
+
+  try {
+    console.log(`Executing query for upToDate: ${upToDate}`);
+    const [rows] = await pool.execute(query, [upToDate]);
+    console.log('Query result:', JSON.stringify(rows, null, 2));
+
+    if (rows.length === 0) {
+      console.log('No data found for the specified date range');
+      return {
+        upToDate,
+        numberOfDays: 0,
+        averages: {
+          rawMaterialPC: 0,
+          rawMaterialCrushedPC: 0,
+          rawMaterialMB: 0,
+        },
+      };
+    }
+
+    let totalPC = 0;
+    let totalCrushedPC = 0;
+    let totalMB = 0;
+
+    rows.forEach((row) => {
+      totalPC += parseFloat(row.total_pc) || 0;
+      totalCrushedPC += parseFloat(row.total_crushed_pc) || 0;
+      totalMB += parseFloat(row.total_mb) || 0;
+    });
+
+    const numberOfDays = rows.length;
+    const averages = {
+      rawMaterialPC: totalPC / numberOfDays,
+      rawMaterialCrushedPC: totalCrushedPC / numberOfDays,
+      rawMaterialMB: totalMB / numberOfDays,
+    };
+
+    console.log('Calculated averages:', JSON.stringify(averages, null, 2));
+    return {
+      upToDate,
+      numberOfDays,
+      averages,
+    };
+  } catch (error) {
+    console.error("Error in getAverageDailyRawMaterialUsage:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+};
+
+const getAverageDailyAssemblyReceived = async (upToDate = new Date().toISOString().split('T')[0]) => {
+  const query = `
+    SELECT 
+      report_date,
+      SUM(COALESCE(ceb_covers, 0)) as total_ceb_covers,
+      SUM(COALESCE(leco_covers, 0)) as total_leco_covers,
+      SUM(COALESCE(base, 0)) as total_base,
+      SUM(COALESCE(shutters, 0)) as total_shutters,
+      SUM(COALESCE(cover_beading, 0)) as total_cover_beading,
+      SUM(COALESCE(shutter_beading, 0)) as total_shutter_beading,
+      SUM(COALESCE(springs, 0)) as total_springs,
+      SUM(COALESCE(corrugated_boxes, 0)) as total_corrugated_boxes,
+      SUM(COALESCE(sellotapes, 0)) as total_sellotapes
+    FROM assembly_received_items
+    WHERE report_date <= ?
+    GROUP BY report_date
+    ORDER BY report_date ASC
+  `;
+
+  try {
+    console.log(`Executing assembly received query for upToDate: ${upToDate}`);
+    const [rows] = await pool.execute(query, [upToDate]);
+    console.log('Assembly received query result:', JSON.stringify(rows, null, 2));
+
+    if (rows.length === 0) {
+      console.log('No data found for the specified date range in assembly_received_items');
+      return {
+        upToDate,
+        numberOfDays: 0,
+        averages: {
+          cebCovers: 0,
+          lecoCovers: 0,
+          base: 0,
+          shutters: 0,
+          coverBeading: 0,
+          shutterBeading: 0,
+          springs: 0,
+          corrugatedBoxes: 0,
+          sellotapes: 0,
+        },
+      };
+    }
+
+    let totalCebCovers = 0;
+    let totalLecoCovers = 0;
+    let totalBase = 0;
+    let totalShutters = 0;
+    let totalCoverBeading = 0;
+    let totalShutterBeading = 0;
+    let totalSprings = 0;
+    let totalCorrugatedBoxes = 0;
+    let totalSellotapes = 0;
+
+    rows.forEach((row) => {
+      totalCebCovers += parseInt(row.total_ceb_covers) || 0;
+      totalLecoCovers += parseInt(row.total_leco_covers) || 0;
+      totalBase += parseInt(row.total_base) || 0;
+      totalShutters += parseInt(row.total_shutters) || 0;
+      totalCoverBeading += parseInt(row.total_cover_beading) || 0;
+      totalShutterBeading += parseInt(row.total_shutter_beading) || 0;
+      totalSprings += parseInt(row.total_springs) || 0;
+      totalCorrugatedBoxes += parseInt(row.total_corrugated_boxes) || 0;
+      totalSellotapes += parseInt(row.total_sellotapes) || 0;
+    });
+
+    const numberOfDays = rows.length;
+    const averages = {
+      cebCovers: totalCebCovers / numberOfDays,
+      lecoCovers: totalLecoCovers / numberOfDays,
+      base: totalBase / numberOfDays,
+      shutters: totalShutters / numberOfDays,
+      coverBeading: totalCoverBeading / numberOfDays,
+      shutterBeading: totalShutterBeading / numberOfDays,
+      springs: totalSprings / numberOfDays,
+      corrugatedBoxes: totalCorrugatedBoxes / numberOfDays,
+      sellotapes: totalSellotapes / numberOfDays,
+    };
+
+    console.log('Calculated assembly received averages:', JSON.stringify(averages, null, 2));
+    return {
+      upToDate,
+      numberOfDays,
+      averages,
+    };
+  } catch (error) {
+    console.error("Error in getAverageDailyAssemblyReceived:", error);
+    throw new Error(`Database error: ${error.message}`);
+  }
+};
+
+export default { 
+  createShiftReport, 
+  getAllShiftReports, 
+  getCurrentStock, 
+  getAverageDailyRawMaterialUsage, 
+  getAverageDailyAssemblyReceived 
+};
